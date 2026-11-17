@@ -369,7 +369,7 @@ table.board .tot{font-family:var(--mono);color:var(--gold);font-size:15px;text-a
         <li><b>阵容加分</b>：选用鸭爵、三船光平、妮芙、Misery、桑葚、华法琳、百炼嘉维尔，每选 1 个 +1 分。</li>
         <li><b>敌人波次</b>：遭遇指定敌人波次 +1 分（特殊 3 敌 +2），该波次无漏额外 +2 分（特殊 +3）。<br>提供「覆盖式」口径开关：无漏时该波次直接记 2 分（特殊 3 分）。</li>
         <li><b>悬赏装备</b>：不退者卫护系统、动能轰击弩、汲取者之镰、驱逐者防暴装备、天马之耀，每件仅一次 +1 分。</li>
-        <li><b>三回合悬赏</b>：选取 3 赏金敌人并成功击杀 +1 分。</li>
+        <li><b>三回合悬赏</b>：选取 3 赏金敌人并成功击杀 +1 分，可多次触发（每次 +1）。</li>
         <li><b>首领击杀</b>：杰斯顿·威廉姆斯、鼠王、泥岩、腐败骑士、凋零骑士、喷气人、邪魔的利刃 +1 分；自在、狼之主、巨大的丑东西、复仇者、迷路的巨像、墓碑 +2 分。</li>
       </ul>
       <h4>单人赛</h4>
@@ -448,7 +448,7 @@ function blankTeam(i){
       waves: WAVES.map(() => ({count:0, noLeak:0})),
       special: SPECIAL_WAVES.map(() => ({count:0, noLeak:0})),
       gear: GEARS.map(() => false),
-      bounty3: false,
+      bounty3: 0,
       bosses: [],
       bannedUsed: 0,
       bonusOps: [],
@@ -477,6 +477,8 @@ function load(){
     // 结构补全
     s.teams.forEach(t => {
       t.teamMatch = Object.assign({}, blankTeam(0).teamMatch, t.teamMatch || {});
+      // 旧版本「三回合悬赏」是布尔值，迁移为次数
+      if(typeof t.teamMatch.bounty3 === "boolean") t.teamMatch.bounty3 = t.teamMatch.bounty3 ? 1 : 0;
       const b = blankTeam(0).teamMatch;
       if(!Array.isArray(t.teamMatch.waves) || t.teamMatch.waves.length !== WAVES.length) t.teamMatch.waves = b.waves;
       if(!Array.isArray(t.teamMatch.special) || t.teamMatch.special.length !== SPECIAL_WAVES.length) t.teamMatch.special = b.special;
@@ -617,7 +619,8 @@ function calcTeam(t, rankOverride){
   /* 悬赏 */
   const gearN = m.gear.filter(Boolean).length;
   if(gearN) rows.push({k:"悬赏", label:"悬赏装备 " + gearN + " 件", val:gearN, note:"每件仅一次"});
-  if(m.bounty3) rows.push({k:"悬赏", label:"三回合悬赏 · 击杀 3 赏金敌人", val:1});
+  const b3 = clampInt(m.bounty3, 0, 20);
+  if(b3) rows.push({k:"悬赏", label:"三回合悬赏 · 击杀 3 赏金敌人 ×" + b3, val:b3, note:"每完成一次 +1"});
   const b1 = m.bosses.filter(b => BOSS_1.includes(b)).length;
   const b2 = m.bosses.filter(b => BOSS_2.includes(b)).length;
   if(b1) rows.push({k:"悬赏", label:"首领击杀（+1 档） " + b1 + " 个", val:b1});
@@ -868,8 +871,16 @@ function renderTeamForm(){
           <label class="chk"><input type="checkbox" data-k="gear.${i}" ${m.gear[i]?"checked":""}><span class="box"></span>${g}<span class="v">+1</span></label>
         `).join("")}
       </div>
-      <div style="padding:14px 0 4px" class="muted">三回合悬赏</div>
-      <label class="chk" style="max-width:320px"><input type="checkbox" data-k="bounty3" ${m.bounty3?"checked":""}><span class="box"></span>选取 3 赏金敌人并成功击杀<span class="v">+1</span></label>
+      <div class="row" style="border:0;padding:12px 0 2px">
+        <div class="lab"><div class="n">三回合悬赏</div><div class="d">选取 3 赏金敌人并成功击杀，每完成一次 +1 分（可多次）</div></div>
+        <div class="ctl">
+          <div class="stepper">
+            <button data-step="bounty3:-1">−</button>
+            <input type="number" min="0" max="20" data-k="bounty3" value="${clampInt(m.bounty3, 0, 20)}">
+            <button data-step="bounty3:1">+</button>
+          </div>
+        </div>
+      </div>
       <div style="padding:14px 0 6px" class="muted">首领击杀 · +1 档</div>
       <div class="boss-grid">
         ${BOSS_1.map(b => `<label class="chk"><input type="checkbox" data-k="bosses" data-id="${esc(b)}" ${m.bosses.includes(b)?"checked":""}><span class="box"></span>${esc(b)}<span class="v">+1</span></label>`).join("")}
@@ -1171,7 +1182,7 @@ document.addEventListener("change", e => {
 
     // 其余 number
     if(el.type === "number"){
-      setDeep(t.teamMatch, k, clampInt(el.value, 0, 99));
+      setDeep(t.teamMatch, k, clampInt(el.value, 0, k === "bounty3" ? 20 : 99));
       save(); renderTeamScore(); return;
     }
 
@@ -1207,7 +1218,7 @@ document.addEventListener("input", e => {
       setDeep(t.teamMatch, k, clampInt(el.value, 0, 99999));
       save(); updateContractUI(); renderTeamScore(); return;
     }
-    setDeep(t.teamMatch, k, clampInt(el.value, 0, 99));
+    setDeep(t.teamMatch, k, clampInt(el.value, 0, k === "bounty3" ? 20 : 99));
     save(); updateWavePts(); renderTeamScore();
   }
 });
@@ -1280,7 +1291,7 @@ document.addEventListener("click", e => {
   if(step){
     const [k, d] = step.dataset.step.split(":");
     const t = activeTeam();
-    const max = k === "heliyah" ? 8 : k === "bannedUsed" ? 9 : k === "deaths" ? 4 : 99;
+    const max = k === "heliyah" ? 8 : k === "bannedUsed" ? 9 : k === "deaths" ? 4 : k === "bounty3" ? 20 : 99;
     const cur = clampInt(t.teamMatch[k], 0, max);
     t.teamMatch[k] = Math.min(max, Math.max(0, cur + Number(d)));
     save(); renderTeamForm(); renderTeamScore(); return;
