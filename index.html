@@ -79,7 +79,20 @@ button{font-family:inherit}
 .btn:hover{background:linear-gradient(180deg,rgba(233,185,73,.26),rgba(233,185,73,.12));border-color:rgba(233,185,73,.6)}
 .btn.ghost{border-color:var(--line-2);background:transparent;color:var(--dim)}
 .btn.ghost:hover{color:var(--txt);border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.03)}
+.btn.danger{border-color:rgba(255,107,107,.35);background:rgba(255,107,107,.08);color:var(--red)}
+.btn.danger:hover{background:rgba(255,107,107,.16);border-color:rgba(255,107,107,.55);color:var(--red)}
 .btn:active{transform:translateY(1px)}
+
+/* ---------- modal ---------- */
+.mask{position:fixed;inset:0;background:rgba(3,6,9,.72);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);z-index:80;display:none;align-items:center;justify-content:center;padding:20px}
+.mask.on{display:flex}
+.modal{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line-2);border-radius:15px;padding:22px;box-shadow:0 30px 70px rgba(0,0,0,.6);animation:pop .18s ease-out}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:none}}
+.modal h3{margin:0 0 8px;font-size:16px;font-weight:650}
+.modal .mbody{font-size:13px;color:var(--dim);line-height:1.8}
+.modal .mbody b{color:var(--txt)}
+.modal .macts{display:flex;flex-direction:column;gap:8px;margin-top:18px}
+.modal .macts .btn{width:100%;padding:11px;text-align:center}
 
 /* ---------- team bar ---------- */
 .teambar{display:flex;align-items:center;gap:10px;padding:16px 0 0;flex-wrap:wrap}
@@ -307,6 +320,7 @@ table.board .tot{font-family:var(--mono);color:var(--gold);font-size:15px;text-a
     </div>
     <div class="top-actions">
       <button class="btn ghost" id="btnExportAll">导出全部</button>
+      <button class="btn ghost" id="btnReset">重置</button>
     </div>
   </header>
 
@@ -389,6 +403,14 @@ table.board .tot{font-family:var(--mono);color:var(--gold);font-size:15px;text-a
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="mask" id="mask">
+  <div class="modal">
+    <h3 id="mTitle"></h3>
+    <div class="mbody" id="mBody"></div>
+    <div class="macts" id="mActs"></div>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -1295,6 +1317,7 @@ document.addEventListener("click", e => {
   if(el.closest("#btnCopySolo")){ copyText(buildSoloText()); return; }
   if(el.closest("#btnJson")){ downloadJson(activeTeam()); return; }
   if(el.closest("#btnExportAll")){ downloadJson(state.teams); return; }
+  if(el.closest("#btnReset")){ openReset(); return; }
 
   const tab = el.closest("#tabs button");
   if(tab){
@@ -1367,6 +1390,72 @@ function downloadJson(data){
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   toast("已导出 JSON");
 }
+
+/* ---------- 重置 ---------- */
+function showModal(title, bodyHtml, actions){
+  document.getElementById("mTitle").textContent = title;
+  document.getElementById("mBody").innerHTML = bodyHtml;
+  const box = document.getElementById("mActs");
+  box.innerHTML = "";
+  actions.forEach(a => {
+    const b = document.createElement("button");
+    b.className = "btn " + (a.kind || "ghost");
+    b.textContent = a.label;
+    b.addEventListener("click", () => {
+      closeModal();
+      if(a.onClick) a.onClick();
+    });
+    box.appendChild(b);
+  });
+  document.getElementById("mask").classList.add("on");
+}
+
+function closeModal(){
+  document.getElementById("mask").classList.remove("on");
+}
+
+function openReset(){
+  showModal("重置数据", "重置会清空已录入的计分项，<b>不可撤销</b>。<br>请选择重置范围：", [
+    {label: "重置当前队伍（保留队名）", kind: "danger", onClick: () => confirmReset("one")},
+    {label: "清空全部队伍", kind: "danger", onClick: () => confirmReset("all")},
+    {label: "取消", kind: "ghost"}
+  ]);
+}
+
+function confirmReset(scope){
+  const t = activeTeam();
+  const text = scope === "one"
+    ? "将清空「" + esc(t.name) + "」的全部计分项，队名保留。"
+    : "将删除当前全部 " + state.teams.length + " 支队伍，恢复到初始状态。";
+  showModal("再次确认", text + "<br><b>此操作不可撤销。</b>", [
+    {label: scope === "one" ? "确认重置当前队伍" : "确认清空全部", kind: "danger", onClick: () => doReset(scope)},
+    {label: "取消", kind: "ghost"}
+  ]);
+}
+
+function doReset(scope){
+  if(scope === "one"){
+    const t = activeTeam();
+    const fresh = blankTeam(0);
+    fresh.id = t.id;
+    fresh.name = t.name;
+    state.teams = state.teams.map(x => x.id === t.id ? fresh : x);
+    state.active = t.id;
+  }else{
+    state.teams = [blankTeam(0)];
+    state.active = state.teams[0].id;
+  }
+  save();
+  renderAll();
+  toast(scope === "one" ? "已重置当前队伍" : "已清空全部队伍");
+}
+
+document.getElementById("mask").addEventListener("click", e => {
+  if(e.target.id === "mask") closeModal();
+});
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape") closeModal();
+});
 
 let toastTimer = null;
 function toast(msg){
