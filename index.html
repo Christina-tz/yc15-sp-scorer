@@ -362,7 +362,7 @@ table.board .tot{font-family:var(--mono);color:var(--gold);font-size:15px;text-a
         <li><b>赛前阵亡</b>：进入普通核心关卡前，每阵亡 1 人 −1 分（掉线且无法连上算阵亡）。</li>
         <li><b>队伍生命值</b>：进入普通核心关卡前，低于一半 −1 分、低于三分之一 −2 分；按最严重一档计，不叠加。</li>
         <li><b>核心盟约层数</b>：层数总和 × 0.0005，向下截断至小数后 2 位（不四舍五入）。<br>例：5001 层 → <code>2.5005</code> → <code>+2.50</code>。</li>
-        <li><b>盟约重合</b>：队员核心盟约不允许重合。重合时扣 1 分，且重合组中层数更多的那些不计入层数加分（只保留该组层数最低者）。</li>
+        <li><b>盟约重合</b>：队员核心盟约不允许重合。重合时扣 1 分，且重合组中层数更多的那些不计入层数加分（只保留该组层数最低者）。选择「其他」的队员不参与重合判定，层数照常计入。</li>
         <li><b>霍尔海雅</b>：结算页面数量超过 2 个时，每多 1 个 −1 分。</li>
         <li><b>漏怪</b>：全程无漏 +4；漏 ≤5 个 +3；≤8 个 +2；≤10 个 +1；超过 10 个 0 分（漏 = 生命值扣除，全队共用）。</li>
         <li><b>禁选</b>：使用被禁用策略，每使用 1 个 −2 分。</li>
@@ -397,6 +397,7 @@ table.board .tot{font-family:var(--mono);color:var(--gold);font-size:15px;text-a
 const STORE_KEY = "yc15_sp_scorer_v1";
 
 const CORE_CONTRACTS = ["炎","萨尔贡","维多利亚","谢拉格","阿戈尔","叙拉古","卡西米尔","乌萨斯","伊比利亚","莱塔尼亚"];
+const OTHER_CONTRACT = "其他";
 
 const BONUS_OPS = ["鸭爵","三船光平","妮芙","Misery","桑葚","华法琳","百炼嘉维尔"];
 
@@ -537,11 +538,14 @@ function esc(s){
 /* ================= 计分 ================= */
 function contractStats(members){
   const groups = {};
+  let sum = 0;
   members.forEach(m => {
     if(!m.contract) return;
+    // 「其他」不参与重合判定，层数照常计入
+    if(m.contract === OTHER_CONTRACT){ sum += n0(m.layers); return; }
     (groups[m.contract] = groups[m.contract] || []).push(m);
   });
-  let sum = 0, overlap = false;
+  let overlap = false;
   const dupIndex = new Set();
   Object.keys(groups).forEach(k => {
     const arr = groups[k];
@@ -706,6 +710,7 @@ function renderTeamForm(){
       <select data-k="members.${i}.contract" data-member-contract="${i}" class="${dup ? "dup" : ""}">
         <option value="">— 选择核心盟约 —</option>
         ${CORE_CONTRACTS.map(c => `<option value="${c}" ${mem.contract === c ? "selected" : ""}>${c}</option>`).join("")}
+        <option value="${OTHER_CONTRACT}" ${mem.contract === OTHER_CONTRACT ? "selected" : ""}>其他（附加盟约 / 不计重合）</option>
       </select>
       <input type="number" min="0" max="99999" step="1" data-k="members.${i}.layers" value="${n0(mem.layers)}">
       <button class="del" data-delmember="${i}" title="移除">×</button>
