@@ -367,7 +367,7 @@ table.board .tot{font-family:var(--mono);color:var(--gold);font-size:15px;text-a
         <li><b>漏怪</b>：全程无漏 +4；漏 ≤5 个 +3；≤8 个 +2；≤10 个 +1；超过 10 个 0 分（漏 = 生命值扣除，全队共用）。</li>
         <li><b>禁选</b>：使用被禁用策略，每使用 1 个 −2 分。</li>
         <li><b>阵容加分</b>：选用鸭爵、三船光平、妮芙、Misery、桑葚、华法琳、百炼嘉维尔，每选 1 个 +1 分。</li>
-        <li><b>敌人波次</b>：遭遇指定敌人波次 +1 分（特殊 3 敌 +2），该波次无漏额外 +2 分（特殊 +3）。<br>提供「覆盖式」口径开关：无漏时该波次直接记 2 分（特殊 3 分）。</li>
+        <li><b>敌人波次</b>：普通波次每遭遇一次 +1 分，该波次无漏记 2 分（覆盖基础分，不叠加）；特殊 3 敌（影役、“左手”泰特斯·白杨、萨卡兹子裔寄生者）每遭遇一次 +2 分，无漏再 +3 分。</li>
         <li><b>悬赏装备</b>：不退者卫护系统、动能轰击弩、汲取者之镰、驱逐者防暴装备、天马之耀，每件仅一次 +1 分。</li>
         <li><b>三回合悬赏</b>：选取 3 赏金敌人并成功击杀 +1 分，可多次触发（每次 +1）。</li>
         <li><b>首领击杀</b>：杰斯顿·威廉姆斯、鼠王、泥岩、腐败骑士、凋零骑士、喷气人、邪魔的利刃 +1 分；自在、狼之主、巨大的丑东西、复仇者、迷路的巨像、墓碑 +2 分。</li>
@@ -466,7 +466,7 @@ function blankTeam(i){
 }
 
 function defaultState(){
-  return {teams:[blankTeam(0)], active:"", view:"team", noLeakMode:"stack"};
+  return {teams:[blankTeam(0)], active:"", view:"team"};
 }
 
 function load(){
@@ -490,7 +490,6 @@ function load(){
       t.solo = Object.assign({}, {beacon:false,broadcast:"none",noLeak:"none",cover:"none"}, t.solo || {});
     });
     if(!s.active || !s.teams.some(t=>t.id===s.active)) s.active = s.teams[0].id;
-    if(!s.noLeakMode) s.noLeakMode = "stack";
     if(!s.view) s.view = "team";
     return s;
   }catch(e){
@@ -564,17 +563,17 @@ function layerBonus(sum){
   return Math.floor(sum * 5 / 100) / 100;
 }
 
-function waveScore(tm, mode){
-  // stack（默认）：遭遇 +1，无漏该波次额外 +2；特殊敌人 +2 / 额外 +3
-  // override：无漏的波次直接记 2 分（特殊 3 分），不再叠加基础分
+function waveScore(tm){
+  // 普通波次：遭遇 +1，该波次无漏记 2 分（覆盖，不叠加）
+  // 特殊波次：遭遇 +2，无漏再 +3
   let normal = 0, special = 0;
   (tm.waves || []).forEach(w => {
     const c = n0(w.count), nl = Math.min(c, n0(w.noLeak));
-    normal += mode === "override" ? c + nl : c + nl * 2;
+    normal += c + nl;
   });
   (tm.special || []).forEach(w => {
     const c = n0(w.count), nl = Math.min(c, n0(w.noLeak));
-    special += mode === "override" ? c * 2 + nl : c * 2 + nl * 3;
+    special += c * 2 + nl * 3;
   });
   return {total: normal + special, normal, special};
 }
@@ -617,7 +616,7 @@ function calcTeam(t, rankOverride){
   }
 
   /* 敌人波次 */
-  const ws = waveScore(m, state.noLeakMode);
+  const ws = waveScore(m);
   rows.push({k:"波次", label:"指定敌人波次加分", val:ws.total, note:"遭遇 + 无漏"});
 
   /* 悬赏 */
@@ -719,7 +718,7 @@ function renderTeamForm(){
 
   const waveRows = WAVES.map((w, i) => {
     const c = n0(m.waves[i].count), nl = n0(m.waves[i].noLeak);
-    const pts = state.noLeakMode === "override" ? c * 1 + Math.min(c,nl) * 1 : c * 1 + Math.min(c,nl) * 2;
+    const pts = c + Math.min(c, nl);
     return `
     <div class="wave">
       <div class="wave-top">
@@ -736,7 +735,7 @@ function renderTeamForm(){
 
   const specRows = SPECIAL_WAVES.map((name, i) => {
     const c = n0(m.special[i].count), nl = n0(m.special[i].noLeak);
-    const pts = state.noLeakMode === "override" ? c * 2 + Math.min(c,nl) * 1 : c * 2 + Math.min(c,nl) * 3;
+    const pts = c * 2 + Math.min(c, nl) * 3;
     return `
     <div class="wave">
       <div class="wave-top">
@@ -849,10 +848,7 @@ function renderTeamForm(){
   <div class="card">
     <div class="card-h">
       <div class="t"><span class="idx">04</span>敌人波次加分</div>
-      <div class="seg sm">
-        <label><input type="radio" name="nlm" data-mode="stack" ${state.noLeakMode==="stack"?"checked":""}><span>无漏叠加</span></label>
-        <label><input type="radio" name="nlm" data-mode="override" ${state.noLeakMode==="override"?"checked":""}><span>无漏覆盖</span></label>
-      </div>
+      <span class="hint">白字：遭遇 +1，无漏记 2；红字特殊：遭遇 +2，无漏再 +3</span>
     </div>
     <div class="card-b">
       <div style="display:flex;gap:10px;align-items:center;padding:8px 0 2px">
@@ -1203,12 +1199,6 @@ document.addEventListener("change", e => {
     t.solo[k] = el.type === "checkbox" ? el.checked : el.value;
     save(); renderSoloScore(); return;
   }
-
-  // 无漏口径
-  if(el.name === "nlm" && el.dataset.mode){
-    state.noLeakMode = el.dataset.mode;
-    save(); renderTeamForm(); renderTeamScore(); return;
-  }
 });
 
 document.addEventListener("input", e => {
@@ -1240,16 +1230,15 @@ function updateContractUI(){
 
 function updateWavePts(){
   const m = activeTeam().teamMatch;
-  const mode = state.noLeakMode;
   WAVES.forEach((w, i) => {
     const c = n0(m.waves[i].count), nl = Math.min(c, n0(m.waves[i].noLeak));
-    const pts = mode === "override" ? c + nl : c + nl * 2;
+    const pts = c + nl;
     const el = document.getElementById("wp" + i);
     if(el) el.textContent = pts ? "+" + pts : "0";
   });
   SPECIAL_WAVES.forEach((w, i) => {
     const c = n0(m.special[i].count), nl = Math.min(c, n0(m.special[i].noLeak));
-    const pts = mode === "override" ? c * 2 + nl : c * 2 + nl * 3;
+    const pts = c * 2 + nl * 3;
     const el = document.getElementById("ws" + i);
     if(el) el.textContent = pts ? "+" + pts : "0";
   });
